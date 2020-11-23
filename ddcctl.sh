@@ -1,21 +1,23 @@
 #!/bin/bash
 #tweak OSX display monitors' brightness to a given scheme, increment, or based on the current local time
 
-#TODO: correct stsOK bug in api call, Enable boolean toggle on/off for settings, find a way to add coordinates for API
+#TODO: toggle for overriding timeline behaviour, stop using fixed coordinates
 
+#base url for api
+BASE_URL="https://api.sunrise-sunset.org/json?"
 #default contrast settings
 VL_C=5
 L_C=10
-M_C=35
+M_C=25
 H_C=40
-VH_C=90
+VH_C=60
 
 #default brigthness settings
 VL_B=5
 L_B=10
-M_B=35
+M_B=25
 H_B=40
-VH_B=90
+VH_B=60
 
 #default sunsrise and sunset values
 SUNR=5
@@ -39,7 +41,10 @@ else
     echo "awk already present at: ${awk_path}"
 fi
 
-DAYLIGHT_API="https://api.sunrise-sunset.org/json?lat=36.7201600&lng=-4.4203400"
+#latitude and longitude
+LAT=36.721600
+LNG=-4.4203400
+DAYLIGHT_API="${BASE_URL}lat=${LAT}&lng=${LNG}"
 
 #default values for sunset and sunrise
 sunrise=$((SUNR))
@@ -51,7 +56,7 @@ sts=$(echo $(echo $sdata | jq '.status') | awk '{print substr($0,2,2);}')
 echo $sts
 if [ "$sts" = "OK" ];
 then
-    echo "api call 200OK..."
+    echo "received 200OK for api:${DAYLIGHT_API}"
     sunrise=$(echo $sdata | jq '.results.sunrise')
     sunset=$(echo $sdata | jq '.results.sunset')
     tzsr=$(echo $(echo ${sunrise} | awk -F: '{print $3}') | awk '{print substr($0, 4,2);}')
@@ -97,6 +102,10 @@ bright() {
 	./ddcctl -d 1 -b $M_B -c $M_C
 }
 
+vbright() {
+        ./ddcctl -d 1 -b $H_B -c $H_C
+}
+
 up() {
 	./ddcctl -d 1 -b 20+ -c 12+
 }
@@ -106,7 +115,7 @@ down() {
 }
 
 full() {
-        ./ddcctl -d 1 -b $H_B -c $H_C
+        ./ddcctl -d 1 -b $VH_B -c $VH_C
 }
 
 dark() {
@@ -124,13 +133,13 @@ then
    dark
 elif [ $HoD -ge $DAY ] && [ $HoD -lt $MID ]
 then
-   full
+   vbright
 elif [ $HoD -ge $MID ]  && [ $HoD -lt $NIGHT ]
 then
    bright
 elif [ $HoD -ge $NIGHT ] && [ $HoD -lt $POST_NIGHT ]
 then
-   dark
-else
    dim
+else
+   dark
 fi
