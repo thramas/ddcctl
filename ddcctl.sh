@@ -1,7 +1,7 @@
 #!/bin/bash
 #tweak OSX display monitors' brightness to a given scheme, increment, or based on the current local time
 
-#TODO: toggle for overriding timeline behaviour, stop using fixed coordinates
+#TODO: toggle for overriding behaviour
 
 #base url for api
 BASE_URL="https://api.sunrise-sunset.org/json?"
@@ -23,42 +23,58 @@ VH_B=60
 SUNR=5
 SUNS=17
 
+#echo "Starting bootstrapping"
+
+# Check for Homebrew, install if we don't have it
+#if test ! $(which brew); then
+#    echo "Installing homebrew..."
+#    ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+#fi
+
 #confirming jq installation
-jq_path=$(which jq)
-if [ -z "$jq_path" ]
-then
-    brew install jq
-else
-    echo "jq already present at: ${jq_path}"
-fi
+#jq_path=$(which jq)
+#if [ -z "$jq_path" ]
+#then
+#    brew install jq
+#else
+#    echo "jq already present at: ${jq_path}"
+#fi
 
 #confirming awk installation
-awk_path=$(which awk)
-if [ -z "$awk_path" ]
-then
-    brew install awk
-else
-    echo "awk already present at: ${awk_path}"
-fi
+#awk_path=$(which awk)
+#if [ -z "$awk_path" ]
+#then
+#    brew install awk
+#else
+#    echo "awk already present at: ${awk_path}"
+#fi
 
-#latitude and longitude
-LAT=36.721600
-LNG=-4.4203400
+location_response=$(cd ~/Documents && ./whereami -k 88a822038b7d418e9f7899ba00d0f946)
+l1=$(echo $location_response | cut -d' ' -f2)
+l2=$(echo $location_response | cut -d' ' -f4)
+gmt_diff=$(echo $(echo $location_response | cut -d' ' -f12) | awk '{print substr($0,4);}')
+gmt_diff=$(($gmt_diff+0))
+
+echo "lat: ${l1},long: ${l2}, gmt: ${gmt_diff}"
+
+LAT=$l1
+LNG=$l2
 DAYLIGHT_API="${BASE_URL}lat=${LAT}&lng=${LNG}"
 
 #default values for sunset and sunrise
 sunrise=$((SUNR))
 sunset=$((SUNS))
 
+echo "def. sunrise: ${sunrise}, def. sunset: ${sunset}"
+
 # API CALL FOR SUNRISE AND SUNSET TIMINGS
 sdata=$(curl -s $DAYLIGHT_API)
-sts=$(echo $(echo $sdata | jq '.status') | awk '{print substr($0,2,2);}')
-echo $sts
+sts=$(echo $(echo $sdata | /usr/local/bin/jq '.status') | awk '{print substr($0,2,2);}')
 if [ "$sts" = "OK" ];
 then
     echo "received 200OK for api:${DAYLIGHT_API}"
-    sunrise=$(echo $sdata | jq '.results.sunrise')
-    sunset=$(echo $sdata | jq '.results.sunset')
+    sunrise=$(echo $sdata | /usr/local/bin/jq '.results.sunrise')
+    sunset=$(echo $sdata | /usr/local/bin/jq '.results.sunset')
     tzsr=$(echo $(echo ${sunrise} | awk -F: '{print $3}') | awk '{print substr($0, 4,2);}')
     tzss=$(echo $(echo ${sunset} | awk -F: '{print $3}') | awk '{print substr($0, 4,2);}')
     sunrise=$(echo $(echo ${sunrise} | awk -F: '{print $1}') | awk '{print substr($0, 2);}')
@@ -66,21 +82,35 @@ then
     sunrise=$(($sunrise))
 
     #ADJUSTING FOR AM/PM BULLSHIT IN THE RESPONSE
-    if [ $tzsr == "PM" ];
+    if [ $tzsr == "PM" ]
     then
-        sunrise=$((($sunrise+12)%24))
+        sunrise=$((($sunrise+12)))
+    elif [ $sunrise -eq 12 ]
+    then
+        sunrise=0
     fi
     
-    if [ $tzss == "PM" ];
+    if [ $tzss == "PM" ]
     then
-        sunset=$((($sunset+12)%24))
+        sunset=$((($sunset+12)))
+    elif [ $sunset -eq 12 ]
+    then
+        sunset=0
     fi
+    echo "UTC calc sunrise: ${sunrise}, UTC calc sunset: ${sunset}"
+    
+    if [ $(($gmt_diff+0)) -lt 0 ];
+    then
+        gmt_diff=$((($gmt_diff+24)%24))
+    fi
+    
+    sunrise=$((($sunrise+$gmt_diff)%24))
+    sunset=$((($sunset+$gmt_diff)%24))
 else
     echo "Using default values"
 fi
 
-#echo ${sunrise}
-#echo ${sunset}
+echo "actual calc sunrise: ${sunrise}, actual calc sunset: ${sunset}"
 #exit 1
 
 #hour settings based upon api data
@@ -89,10 +119,7 @@ NIGHT=$(($sunset))
 MID=$(($DAY + ($NIGHT-$DAY)/2))
 POST_NIGHT=$(($sunset+4))
 
-echo "day: $DAY"
-echo "mid: $MID"
-echo "night: $NIGHT"
-echo "pnight: $POST_NIGHT"
+echo "day: ${DAY}, mid: ${MID}, night: ${NIGHT}, pnight: ${POST_NIGHT}"
 
 dim() {
 	./ddcctl -d 1 -b $L_B -c $L_C
